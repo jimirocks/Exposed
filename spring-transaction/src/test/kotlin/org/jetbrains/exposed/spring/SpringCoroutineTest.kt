@@ -4,15 +4,19 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.debug.junit4.CoroutinesTimeout
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.tests.RepeatableTest
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.experimental.suspendedTransactionAsync
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.Rule
 import org.junit.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.annotation.Commit
 import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertEquals
 
 open class SpringCoroutineTest : SpringTransactionTestBase() {
+
+    @Autowired private lateinit var service: Service
 
     @Rule
     @JvmField
@@ -77,5 +81,29 @@ open class SpringCoroutineTest : SpringTransactionTestBase() {
             while (!mainJob.isCompleted) Thread.sleep(100)
             mainJob.getCompletionExceptionOrNull()?.let { throw it }
         }*/
+    }
+
+    @Test
+    fun `nested spring inside coroutine`() {
+        runBlocking {
+            try {
+                service.init()
+                transaction {  SchemaUtils.create(Testing) }
+                newSuspendedTransaction {
+                    Testing.insert {}
+                    assertEquals(1, Testing.selectAll().count())
+
+                    service.createCustomer("Alice1")
+                }
+
+                transaction {
+                    Testing.insert {  }
+                }
+
+            } finally {
+                transaction {  SchemaUtils.drop(Testing)}
+                service.cleanUp()
+            }
+        }
     }
 }
