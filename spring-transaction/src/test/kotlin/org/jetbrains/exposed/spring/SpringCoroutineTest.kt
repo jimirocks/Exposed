@@ -83,18 +83,24 @@ open class SpringCoroutineTest : SpringTransactionTestBase() {
         }*/
     }
 
+    @RepeatableTest(times = 5)
     @Test
     fun `nested spring inside coroutine`() {
-        runBlocking {
+
             try {
                 service.init()
                 transaction {  SchemaUtils.create(Testing) }
-                newSuspendedTransaction {
-                    Testing.insert {}
-                    assertEquals(1, Testing.selectAll().count())
+                val job = GlobalScope.async {
+                    newSuspendedTransaction {
+                        Testing.insert {}
+                        assertEquals(1, Testing.selectAll().count())
 
-                    service.createCustomer("Alice1")
+                        service.createCustomer("Alice1")
+                    }
                 }
+
+                while (!job.isCompleted) Thread.sleep(100)
+                job.getCompletionExceptionOrNull()?.let { throw it }
 
                 transaction {
                     Testing.insert {  }
@@ -105,5 +111,4 @@ open class SpringCoroutineTest : SpringTransactionTestBase() {
                 service.cleanUp()
             }
         }
-    }
 }
